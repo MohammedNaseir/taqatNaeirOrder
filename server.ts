@@ -147,22 +147,33 @@ app.delete('/api/restaurants/meals/:meal_id', authenticate, requireAdmin, (req, 
   res.json({ success: true });
 });
 
+app.get('/api/orders', authenticate, (req, res) => {
+  const orders = db.prepare('SELECT * FROM daily_orders ORDER BY order_date DESC').all();
+  res.json(orders);
+});
+
 app.get('/api/orders/today', authenticate, (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   let order = db.prepare('SELECT * FROM daily_orders WHERE order_date = ?').get(today);
   res.json(order || null);
 });
 
+app.get('/api/orders/:id', authenticate, (req, res) => {
+  const order = db.prepare('SELECT * FROM daily_orders WHERE id = ?').get(req.params.id);
+  res.json(order || null);
+});
+
 app.post('/api/orders', authenticate, requireAdmin, (req: any, res) => {
-  const today = new Date().toISOString().split('T')[0];
-  const existing = db.prepare('SELECT * FROM daily_orders WHERE order_date = ?').get(today);
-  if (existing) return res.status(400).json({ error: 'Order for today already exists' });
+  const { date } = req.body || {};
+  const orderDate = date || new Date().toISOString().split('T')[0];
+  const existing = db.prepare('SELECT * FROM daily_orders WHERE order_date = ?').get(orderDate);
+  if (existing) return res.status(400).json({ error: 'يوجد طلبية مسجلة بهذا التاريخ مسبقاً' });
 
   const id = randomUUID();
   db.prepare('INSERT INTO daily_orders (id, order_date, status, created_by) VALUES (?, ?, ?, ?)').run(
-    id, today, 'open', req.user.id
+    id, orderDate, 'open', req.user.id
   );
-  res.json({ id, order_date: today, status: 'open' });
+  res.json({ id, order_date: orderDate, status: 'open' });
 });
 
 app.put('/api/orders/:id/status', authenticate, requireAdmin, (req: any, res) => {

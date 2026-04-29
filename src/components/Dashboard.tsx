@@ -14,6 +14,8 @@ const STATUS_MAP: Record<string, { label: string, icon: any, color: string }> = 
 export default function Dashboard() {
   const { user } = useContext(AuthContext);
   const [order, setOrder] = useState<any>(null);
+  const [allOrders, setAllOrders] = useState<any[]>([]);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [items, setItems] = useState<any[]>([]);
   const [restaurants, setRestaurants] = useState<any[]>([]);
   const [meals, setMeals] = useState<any[]>([]);
@@ -103,18 +105,31 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [order, hasPlayedAlarm]);
 
-  const fetchData = async () => {
+  const fetchData = async (orderIdToFetch?: string) => {
     try {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
 
-      const orderRes = await fetch('/api/orders/today', { headers });
-      const orderData = await orderRes.json();
-      setOrder(orderData);
+      const allOrdersRes = await fetch('/api/orders', { headers });
+      const allOrdersData = await allOrdersRes.json();
+      setAllOrders(allOrdersData);
 
+      let orderData = null;
+      if (orderIdToFetch) {
+         const orderRes = await fetch(`/api/orders/${orderIdToFetch}`, { headers });
+         orderData = await orderRes.json();
+      } else if (allOrdersData.length > 0) {
+         orderData = allOrdersData[0]; // the latest order
+      }
+
+      setOrder(orderData);
       if (orderData) {
+        setSelectedOrderId(orderData.id);
         const itemsRes = await fetch(`/api/orders/${orderData.id}/items`, { headers });
         setItems(await itemsRes.json());
+      } else {
+        setSelectedOrderId(null);
+        setItems([]);
       }
 
       const restsRes = await fetch('/api/restaurants', { headers });
@@ -129,6 +144,10 @@ export default function Dashboard() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleOrderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    fetchData(e.target.value);
+  };
 
   useEffect(() => {
     if (restaurantId) {
@@ -199,7 +218,7 @@ export default function Dashboard() {
       setItemName('');
       setPrice('');
       setNotes('');
-      fetchData(); // Refresh list
+      fetchData(order.id); // Refresh list
     } catch (err: any) {
       setFormError(err.message);
     } finally {
@@ -215,7 +234,7 @@ export default function Dashboard() {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
-      fetchData();
+      fetchData(order.id);
     } catch (err) {
       console.error(err);
     }
@@ -271,8 +290,19 @@ export default function Dashboard() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       {/* Status Header */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-1">طلبية اليوم: {order.order_date}</h2>
+        <div className="w-full md:w-auto flex-1">
+          <div className="flex items-center gap-3 mb-2">
+            <h2 className="text-xl font-bold text-gray-900">الطلبية:</h2>
+            <select 
+              className="bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
+              value={selectedOrderId || ''}
+              onChange={handleOrderChange}
+            >
+              {allOrders.map(o => (
+                <option key={o.id} value={o.id}>{o.order_date}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border", statusInfo.color)}>
               <StatusIcon size={16} />

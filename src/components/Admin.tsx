@@ -5,36 +5,46 @@ import { cn } from '../lib/utils.ts';
 import { motion, AnimatePresence } from 'motion/react';
 
 function AdminOrders() {
-  const [order, setOrder] = useState<any>(null);
+  const [allOrders, setAllOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [newOrderDate, setNewOrderDate] = useState(new Date().toISOString().split('T')[0]);
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
+  const [editingTimerId, setEditingTimerId] = useState<string | null>(null);
   const [timerMinutes, setTimerMinutes] = useState('30');
 
-  const fetchOrder = async () => {
+  const fetchOrders = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/orders/today', { headers: { Authorization: `Bearer ${token}` } });
-      setOrder(await res.json());
+      const allRes = await fetch('/api/orders', { headers: { Authorization: `Bearer ${token}` } });
+      const allOrdersData = await allRes.json();
+      setAllOrders(allOrdersData);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchOrder(); }, []);
+  useEffect(() => { fetchOrders(); }, []);
 
   const handleCreateOrder = async () => {
     const token = localStorage.getItem('token');
-    await fetch('/api/orders', {
+    const res = await fetch('/api/orders', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ date: newOrderDate })
     });
-    fetchOrder();
+    if (res.ok) {
+      setShowCreateForm(false);
+      fetchOrders();
+    } else {
+      const errorData = await res.json();
+      alert(errorData.error || 'حدث خطأ أثناء إنشاء الطلبية');
+    }
   };
 
-  const handleChangeStatus = async (status: string) => {
-    if (!order) return;
+  const handleChangeStatus = async (id: string, status: string) => {
     const token = localStorage.getItem('token');
-    await fetch(`/api/orders/${order.id}/status`, {
+    await fetch(`/api/orders/${id}/status`, {
       method: 'PUT',
       headers: { 
         'Content-Type': 'application/json',
@@ -42,121 +52,154 @@ function AdminOrders() {
       },
       body: JSON.stringify({ status })
     });
-    fetchOrder();
+    fetchOrders();
   };
 
-  const handleSetTimer = async () => {
-    if (!order) return;
+  const handleSetTimer = async (id: string) => {
     const mins = parseInt(timerMinutes);
     if (isNaN(mins) || mins <= 0) return;
     const closesAt = new Date(Date.now() + mins * 60000).toISOString();
     const token = localStorage.getItem('token');
-    await fetch(`/api/orders/${order.id}/timer`, {
+    await fetch(`/api/orders/${id}/timer`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ closes_at: closesAt })
     });
-    fetchOrder();
+    setEditingTimerId(null);
+    fetchOrders();
   };
 
-  const handleClearTimer = async () => {
-    if (!order) return;
+  const handleClearTimer = async (id: string) => {
     const token = localStorage.getItem('token');
-    await fetch(`/api/orders/${order.id}/timer`, {
+    await fetch(`/api/orders/${id}/timer`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ closes_at: null })
     });
-    fetchOrder();
+    fetchOrders();
   };
 
   if (loading) return <div>جاري التحميل...</div>;
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-      <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-        <Calendar size={20} className="text-blue-600" />
-        إدارة طلبية اليوم
-      </h3>
-      
-      {!order ? (
-        <div className="text-center py-8">
-          <p className="text-gray-500 mb-4">لم يتم إنشاء طلبية لليوم بعد.</p>
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <h3 className="text-lg font-bold flex items-center gap-2">
+            <Calendar size={20} className="text-blue-600" />
+            إدارة الطلبيات
+          </h3>
+          
           <button 
-            onClick={handleCreateOrder}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium px-3 py-2 rounded-lg transition-colors text-sm"
           >
+            <Plus size={16} /> 
             إنشاء طلبية جديدة
           </button>
         </div>
-      ) : (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="text-sm text-gray-500 mb-1">التاريخ</div>
-              <div className="font-bold">{order.order_date}</div>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="text-sm text-gray-500 mb-1">المرحلة الحالية</div>
-              <div className="font-bold capitalize">{order.status}</div>
-            </div>
-          </div>
 
-          <div className="p-4 border border-blue-100 bg-blue-50/50 rounded-lg space-y-3">
-            <h4 className="text-sm font-bold text-gray-800">مؤقت إغلاق الطلب:</h4>
-            <div className="flex flex-wrap items-center gap-3">
-              <input 
-                type="number" 
-                value={timerMinutes}
-                onChange={e => setTimerMinutes(e.target.value)}
-                min="1"
-                className="w-24 px-3 py-1.5 border rounded-lg text-sm text-center focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <span className="text-sm text-gray-600">دقيقة</span>
+        {showCreateForm && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-6 p-4 border border-blue-200 bg-blue-50/50 rounded-xl overflow-hidden">
+            <h4 className="font-bold text-gray-800 mb-3 text-sm">تاريخ الطلبية الجديدة</h4>
+            <div className="flex flex-wrap gap-3 items-end">
+              <div>
+                <input 
+                  type="date" 
+                  value={newOrderDate}
+                  onChange={e => setNewOrderDate(e.target.value)}
+                  className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2 outline-none"
+                />
+              </div>
               <button 
-                onClick={handleSetTimer}
-                className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition-colors"
+                onClick={handleCreateOrder}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm"
               >
-                تفعيل المؤقت
+                تأكيد الإنشاء
               </button>
-              {order.closes_at && (
-                <button 
-                  onClick={handleClearTimer}
-                  className="bg-red-100 text-red-700 px-4 py-1.5 rounded-lg text-sm hover:bg-red-200 transition-colors"
-                >
-                  إلغاء المؤقت
-                </button>
-              )}
             </div>
-            {order.closes_at && (
-              <p className="text-sm text-blue-700 mt-2 font-medium">
-                ينتهي بعد: {new Date(order.closes_at).toLocaleTimeString('ar-EG')}
-              </p>
-            )}
-          </div>
+          </motion.div>
+        )}
 
-          <div className="pt-4 border-t border-gray-100">
-            <h4 className="text-sm font-bold text-gray-700 mb-3">تغيير المرحلة:</h4>
-            <div className="flex flex-wrap gap-2">
-              {['open', 'ordered', 'delivered', 'closed'].map(s => (
-                <button
-                  key={s}
-                  onClick={() => handleChangeStatus(s)}
-                  disabled={order.status === s}
-                  className={cn(
-                    "px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors",
-                    order.status === s 
-                      ? "bg-blue-100 text-blue-700 cursor-default"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  )}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <table className="w-full text-sm text-right">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-4 py-3 min-w-[120px]">التاريخ</th>
+                <th className="px-4 py-3 min-w-[140px]">المرحلة الحالية</th>
+                <th className="px-4 py-3 min-w-[200px]">المؤقت</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-gray-500">
+                    لا توجد طلبيات مسجلة
+                  </td>
+                </tr>
+              ) : (
+                allOrders.map(o => (
+                  <tr key={o.id} className="border-b last:border-0 hover:bg-gray-50 align-top">
+                    <td className="px-4 py-4 font-bold text-gray-900">{o.order_date}</td>
+                    <td className="px-4 py-4">
+                      <select 
+                        value={o.status}
+                        onChange={(e) => handleChangeStatus(o.id, e.target.value)}
+                        className={cn(
+                          "border rounded-lg px-2 py-1.5 text-sm outline-none transition-colors font-medium cursor-pointer",
+                          o.status === 'open' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                          o.status === 'ordered' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                          o.status === 'delivered' ? 'bg-green-50 border-green-200 text-green-700' :
+                          'bg-gray-50 border-gray-200 text-gray-700'
+                        )}
+                      >
+                        <option value="open">مفتوح (استقبال طلبات)</option>
+                        <option value="ordered">تم الطلب من المطعم</option>
+                        <option value="delivered">تم التوصيل للشركة</option>
+                        <option value="closed">مغلق</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-4">
+                      {editingTimerId === o.id ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input 
+                            type="number"
+                            value={timerMinutes}
+                            onChange={e => setTimerMinutes(e.target.value)}
+                            className="w-16 px-2 py-1 text-sm border rounded outline-none focus:border-blue-500"
+                            min="1"
+                          />
+                          <span className="text-xs text-gray-500">دقيقة</span>
+                          <button onClick={() => handleSetTimer(o.id)} className="bg-blue-600 hover:bg-blue-700 transition-colors text-white px-3 py-1 rounded text-xs font-medium">حفظ</button>
+                          <button onClick={() => setEditingTimerId(null)} className="bg-gray-200 hover:bg-gray-300 transition-colors text-gray-700 px-3 py-1 rounded text-xs font-medium">إلغاء</button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1.5">
+                          {o.closes_at ? (
+                            <>
+                              <span className="text-blue-700 font-mono text-sm font-medium bg-blue-50 w-fit px-2 py-0.5 rounded border border-blue-100">
+                                {new Date(o.closes_at).toLocaleTimeString('ar-EG')}
+                              </span>
+                              <div className="flex gap-3 mt-1">
+                                <button onClick={() => setEditingTimerId(o.id)} className="text-xs text-blue-600 hover:text-blue-800 transition-colors font-medium">تعديل</button>
+                                <button onClick={() => handleClearTimer(o.id)} className="text-xs text-red-600 hover:text-red-800 transition-colors font-medium">إلغاء المؤقت</button>
+                              </div>
+                            </>
+                          ) : (
+                            <button onClick={() => setEditingTimerId(o.id)} className="text-xs text-gray-500 bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded hover:text-blue-600 hover:border-blue-200 transition-colors shrink-0 w-fit font-medium">
+                              + إضافة مؤقت إغلاق
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
     </motion.div>
   );
 }
