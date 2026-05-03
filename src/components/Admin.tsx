@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Users, Store, Calendar, Plus } from 'lucide-react';
 import { cn } from '../lib/utils.ts';
@@ -79,41 +79,43 @@ function AdminOrders() {
     fetchOrders();
   };
 
-  if (loading) return <div>جاري التحميل...</div>;
+  if (loading) return <div className="text-gray-400 py-12 text-center">جاري التحميل...</div>;
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+      <div className="bg-[#18181b]/80 backdrop-blur-xl p-6 rounded-2xl shadow-lg border border-white/5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <h3 className="text-lg font-bold flex items-center gap-2">
-            <Calendar size={20} className="text-blue-600" />
+          <h3 className="text-xl font-bold flex items-center gap-2 text-gray-100">
+            <div className="bg-emerald-500/20 text-emerald-400 p-1.5 rounded-lg">
+              <Calendar size={20} />
+            </div>
             إدارة الطلبيات
           </h3>
           
           <button 
             onClick={() => setShowCreateForm(!showCreateForm)}
-            className="flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium px-3 py-2 rounded-lg transition-colors text-sm"
+            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-4 py-2.5 rounded-xl transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] text-sm"
           >
-            <Plus size={16} /> 
+            <Plus size={18} /> 
             إنشاء طلبية جديدة
           </button>
         </div>
 
         {showCreateForm && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-6 p-4 border border-blue-200 bg-blue-50/50 rounded-xl overflow-hidden">
-            <h4 className="font-bold text-gray-800 mb-3 text-sm">تاريخ الطلبية الجديدة</h4>
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-6 p-5 border border-emerald-500/20 bg-emerald-500/5 rounded-2xl overflow-hidden mt-4">
+            <h4 className="font-bold text-gray-200 mb-3 text-sm">تاريخ الطلبية الجديدة</h4>
             <div className="flex flex-wrap gap-3 items-end">
               <div>
                 <input 
                   type="date" 
                   value={newOrderDate}
                   onChange={e => setNewOrderDate(e.target.value)}
-                  className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2 outline-none"
+                  className="bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 block p-2.5 outline-none"
                 />
               </div>
               <button 
                 onClick={handleCreateOrder}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm"
+                className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-5 py-2.5 rounded-xl transition-all text-sm"
               >
                 تأكيد الإنشاء
               </button>
@@ -121,72 +123,72 @@ function AdminOrders() {
           </motion.div>
         )}
 
-        <div className="overflow-x-auto rounded-xl border border-gray-100">
+        <div className="overflow-x-auto rounded-xl border border-white/5 mt-6">
           <table className="w-full text-sm text-right">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-black/40 border-b border-white/5">
               <tr>
-                <th className="px-4 py-3 min-w-[120px]">التاريخ</th>
-                <th className="px-4 py-3 min-w-[140px]">المرحلة الحالية</th>
-                <th className="px-4 py-3 min-w-[200px]">المؤقت</th>
+                <th className="px-5 py-4 min-w-[120px] text-gray-400">التاريخ</th>
+                <th className="px-5 py-4 min-w-[140px] text-gray-400">المرحلة الحالية</th>
+                <th className="px-5 py-4 min-w-[200px] text-gray-400">المؤقت</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-white/5">
               {allOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={3} className="px-5 py-12 text-center text-gray-500">
                     لا توجد طلبيات مسجلة
                   </td>
                 </tr>
               ) : (
                 allOrders.map(o => (
-                  <tr key={o.id} className="border-b last:border-0 hover:bg-gray-50 align-top">
-                    <td className="px-4 py-4 font-bold text-gray-900">{o.order_date}</td>
-                    <td className="px-4 py-4">
+                  <tr key={o.id} className="hover:bg-white/[0.02] items-center transition-colors align-middle">
+                    <td className="px-5 py-5 font-bold text-gray-200">{o.order_date}</td>
+                    <td className="px-5 py-5">
                       <select 
                         value={o.status}
                         onChange={(e) => handleChangeStatus(o.id, e.target.value)}
                         className={cn(
-                          "border rounded-lg px-2 py-1.5 text-sm outline-none transition-colors font-medium cursor-pointer",
-                          o.status === 'open' ? 'bg-blue-50 border-blue-200 text-blue-700' :
-                          o.status === 'ordered' ? 'bg-amber-50 border-amber-200 text-amber-700' :
-                          o.status === 'delivered' ? 'bg-green-50 border-green-200 text-green-700' :
-                          'bg-gray-50 border-gray-200 text-gray-700'
+                          "border rounded-xl px-3 py-2 text-sm outline-none transition-colors font-bold cursor-pointer",
+                          o.status === 'open' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                          o.status === 'ordered' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' :
+                          o.status === 'delivered' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
+                          'bg-gray-500/10 border-gray-500/20 text-gray-400'
                         )}
                       >
-                        <option value="open">مفتوح (استقبال طلبات)</option>
-                        <option value="ordered">تم الطلب من المطعم</option>
-                        <option value="delivered">تم التوصيل للشركة</option>
-                        <option value="closed">مغلق</option>
+                        <option value="open" className="bg-[#18181b]">مفتوح (استقبال طلبات)</option>
+                        <option value="ordered" className="bg-[#18181b]">تم الطلب من المطعم</option>
+                        <option value="delivered" className="bg-[#18181b]">تم التوصيل للشركة</option>
+                        <option value="closed" className="bg-[#18181b]">مغلق</option>
                       </select>
                     </td>
-                    <td className="px-4 py-4">
+                    <td className="px-5 py-5">
                       {editingTimerId === o.id ? (
                         <div className="flex flex-wrap items-center gap-2">
                           <input 
                             type="number"
                             value={timerMinutes}
                             onChange={e => setTimerMinutes(e.target.value)}
-                            className="w-16 px-2 py-1 text-sm border rounded outline-none focus:border-blue-500"
+                            className="w-16 px-3 py-1.5 text-sm border border-white/10 bg-black/20 text-white rounded-lg outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
                             min="1"
                           />
-                          <span className="text-xs text-gray-500">دقيقة</span>
-                          <button onClick={() => handleSetTimer(o.id)} className="bg-blue-600 hover:bg-blue-700 transition-colors text-white px-3 py-1 rounded text-xs font-medium">حفظ</button>
-                          <button onClick={() => setEditingTimerId(null)} className="bg-gray-200 hover:bg-gray-300 transition-colors text-gray-700 px-3 py-1 rounded text-xs font-medium">إلغاء</button>
+                          <span className="text-xs text-gray-400">دقيقة</span>
+                          <button onClick={() => handleSetTimer(o.id)} className="bg-emerald-500 hover:bg-emerald-400 text-black px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">حفظ</button>
+                          <button onClick={() => setEditingTimerId(null)} className="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">إلغاء</button>
                         </div>
                       ) : (
-                        <div className="flex flex-col gap-1.5">
+                        <div className="flex flex-col gap-2">
                           {o.closes_at ? (
                             <>
-                              <span className="text-blue-700 font-mono text-sm font-medium bg-blue-50 w-fit px-2 py-0.5 rounded border border-blue-100">
+                              <span className="text-amber-400 font-mono text-sm font-bold bg-amber-500/10 w-fit px-3 py-1 rounded-lg border border-amber-500/20">
                                 {new Date(o.closes_at).toLocaleTimeString('ar-EG')}
                               </span>
                               <div className="flex gap-3 mt-1">
-                                <button onClick={() => setEditingTimerId(o.id)} className="text-xs text-blue-600 hover:text-blue-800 transition-colors font-medium">تعديل</button>
-                                <button onClick={() => handleClearTimer(o.id)} className="text-xs text-red-600 hover:text-red-800 transition-colors font-medium">إلغاء المؤقت</button>
+                                <button onClick={() => setEditingTimerId(o.id)} className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium">تعديل</button>
+                                <button onClick={() => handleClearTimer(o.id)} className="text-xs text-red-400 hover:text-red-300 transition-colors font-medium">إلغاء المؤقت</button>
                               </div>
                             </>
                           ) : (
-                            <button onClick={() => setEditingTimerId(o.id)} className="text-xs text-gray-500 bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded hover:text-blue-600 hover:border-blue-200 transition-colors shrink-0 w-fit font-medium">
+                            <button onClick={() => setEditingTimerId(o.id)} className="text-xs text-gray-400 bg-white/5 border border-white/10 px-4 py-2 rounded-lg hover:text-emerald-400 hover:border-emerald-500/30 transition-colors shrink-0 w-fit font-bold">
                               + إضافة مؤقت إغلاق
                             </button>
                           )}
@@ -233,41 +235,49 @@ function AdminUsers() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h3 className="text-lg font-bold mb-4">إضافة مستخدم جديد</h3>
+      <div className="bg-[#18181b]/80 backdrop-blur-xl p-6 rounded-2xl shadow-lg border border-white/5">
+        <h3 className="text-xl font-bold flex items-center gap-2 text-gray-100 mb-6">
+          <div className="bg-emerald-500/20 text-emerald-400 p-1.5 rounded-lg">
+            <Users size={20} />
+          </div>
+          إضافة مستخدم جديد
+        </h3>
         <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input required placeholder="الاسم الكامل" value={fullName} onChange={e => setFullName(e.target.value)} className="px-3 py-2 border rounded-lg text-sm" />
-          <input required placeholder="اسم المستخدم" value={username} onChange={e => setUsername(e.target.value)} className="px-3 py-2 border rounded-lg text-sm" />
-          <input required type="password" placeholder="كلمة المرور" value={password} onChange={e => setPassword(e.target.value)} className="px-3 py-2 border rounded-lg text-sm" />
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} className="rounded" />
+          <input required placeholder="الاسم الكامل" value={fullName} onChange={e => setFullName(e.target.value)} className="bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 block px-4 py-3 outline-none transition-all placeholder-gray-500" />
+          <input required placeholder="اسم المستخدم" value={username} onChange={e => setUsername(e.target.value)} className="bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 block px-4 py-3 outline-none transition-all placeholder-gray-500" />
+          <input required type="password" placeholder="كلمة المرور" value={password} onChange={e => setPassword(e.target.value)} className="bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 block px-4 py-3 outline-none transition-all placeholder-gray-500" />
+          <label className="flex items-center gap-3 text-sm text-gray-300 bg-black/20 px-4 py-3 border border-white/10 rounded-xl cursor-pointer">
+            <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} className="rounded border-white/20 bg-black/20 text-emerald-500 focus:ring-emerald-500" />
             صلاحيات مسؤول (Admin)
           </label>
-          <div className="md:col-span-2">
-            <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium">إضافة المستخدم</button>
+          <div className="md:col-span-2 mt-2">
+            <button type="submit" className="w-full bg-emerald-500 hover:bg-emerald-400 text-black py-3 rounded-xl text-sm font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]">إضافة المستخدم</button>
           </div>
         </form>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-[#18181b]/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/5 overflow-hidden">
         <table className="w-full text-sm text-right">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-black/40 border-b border-white/5">
             <tr>
-              <th className="px-4 py-3">الاسم الكامل</th>
-              <th className="px-4 py-3">اسم المستخدم</th>
-              <th className="px-4 py-3">الدور</th>
+              <th className="px-5 py-4 text-gray-400">الاسم الكامل</th>
+              <th className="px-5 py-4 text-gray-400">اسم المستخدم</th>
+              <th className="px-5 py-4 text-gray-400">الدور</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-white/5">
             {users.map(u => (
-              <tr key={u.id} className="border-b last:border-0 hover:bg-gray-50">
-                <td className="px-4 py-3">{u.full_name}</td>
-                <td className="px-4 py-3 font-mono text-gray-500">{u.username}</td>
-                <td className="px-4 py-3">
-                  {u.is_admin ? <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs">Admin</span> : <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">User</span>}
+              <tr key={u.id} className="hover:bg-white/[0.02] transition-colors">
+                <td className="px-5 py-4 font-bold text-gray-200">{u.full_name}</td>
+                <td className="px-5 py-4 font-mono text-gray-400">{u.username}</td>
+                <td className="px-5 py-4">
+                  {u.is_admin ? <span className="bg-purple-500/10 border border-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-bold">Admin</span> : <span className="bg-white/5 border border-white/10 text-gray-400 px-3 py-1.5 rounded-lg text-xs font-bold">User</span>}
                 </td>
               </tr>
             ))}
+            {users.length === 0 && (
+              <tr><td colSpan={3} className="px-5 py-12 text-center text-gray-500">لا يوجد مستخدمين.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -361,26 +371,31 @@ function AdminRestaurants() {
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div className="space-y-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h3 className="text-lg font-bold mb-4">إضافة مطعم</h3>
-          <form onSubmit={handleCreate} className="flex gap-4">
-            <input required placeholder="اسم المطعم" value={name} onChange={e => setName(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg text-sm" />
-            <button type="submit" className="bg-blue-600 px-6 text-white rounded-lg text-sm font-medium">إضافة</button>
+        <div className="bg-[#18181b]/80 backdrop-blur-xl p-6 rounded-2xl shadow-lg border border-white/5">
+          <h3 className="text-xl font-bold flex items-center gap-2 text-gray-100 mb-6">
+            <div className="bg-emerald-500/20 text-emerald-400 p-1.5 rounded-lg">
+              <Store size={20} />
+            </div>
+            إضافة مطعم
+          </h3>
+          <form onSubmit={handleCreate} className="flex gap-3">
+            <input required placeholder="اسم المطعم" value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 px-4 py-3 outline-none transition-all placeholder-gray-500" />
+            <button type="submit" className="bg-emerald-500 hover:bg-emerald-400 text-black px-6 rounded-xl text-sm font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]">إضافة</button>
           </form>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-            <h3 className="font-semibold text-gray-800">المطاعم الحالية</h3>
+        <div className="bg-[#18181b]/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/5 overflow-hidden">
+          <div className="p-5 border-b border-white/5 bg-black/40 flex items-center justify-between">
+            <h3 className="font-bold text-gray-200">المطاعم الحالية</h3>
           </div>
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-white/5">
             {restaurants.map(r => (
-              <li key={r.id} className={cn("p-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer transition-colors", selectedRestaurant?.id === r.id ? "bg-blue-50/50" : "")} onClick={() => setSelectedRestaurant(r)}>
-                <span className="font-medium text-gray-900">{r.name}</span>
-                <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="text-red-500 hover:text-red-700 text-sm">حذف</button>
+              <li key={r.id} className={cn("p-5 flex items-center justify-between hover:bg-white/[0.02] cursor-pointer transition-colors border-l-2", selectedRestaurant?.id === r.id ? "border-l-emerald-500 bg-emerald-500/5" : "border-l-transparent")} onClick={() => setSelectedRestaurant(r)}>
+                <span className="font-bold text-gray-200">{r.name}</span>
+                <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} className="text-gray-500 hover:text-red-400 hover:bg-red-400/10 p-2 rounded-lg transition-colors text-sm font-bold">حذف</button>
               </li>
             ))}
-            {restaurants.length === 0 && <li className="p-6 text-center text-gray-500">لا يوجد مطاعم مضافة.</li>}
+            {restaurants.length === 0 && <li className="p-8 text-center text-gray-500">لا يوجد مطاعم مضافة.</li>}
           </ul>
         </div>
       </div>
@@ -388,36 +403,36 @@ function AdminRestaurants() {
       {/* Meals Management */}
       {selectedRestaurant && (
         <div className="space-y-6">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-blue-100 ring-1 ring-blue-50">
-            <h3 className="text-lg font-bold mb-4 flex justify-between items-center">
-              <span>إضافة وجبة لـ {selectedRestaurant.name}</span>
+          <div className="bg-[#18181b]/80 backdrop-blur-xl p-6 rounded-2xl shadow-lg border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.05)]">
+            <h3 className="text-xl font-bold text-gray-100 mb-6 flex justify-between items-center">
+              <span>إضافة وجبة لـ <span className="text-emerald-400">{selectedRestaurant.name}</span></span>
             </h3>
             <form onSubmit={handleAddMeal} className="space-y-4">
               <div>
-                <input required placeholder="اسم الوجبة" value={mealName} onChange={e => setMealName(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                <input required placeholder="اسم الوجبة" value={mealName} onChange={e => setMealName(e.target.value)} className="w-full bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 px-4 py-3 outline-none transition-all placeholder-gray-500" />
               </div>
               <div>
-                <input required type="number" step="0.01" placeholder="السعر" value={mealPrice} onChange={e => setMealPrice(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                <input required type="number" step="0.01" placeholder="السعر" value={mealPrice} onChange={e => setMealPrice(e.target.value)} className="w-full bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 px-4 py-3 outline-none transition-all placeholder-gray-500" />
               </div>
-              <button type="submit" className="w-full bg-blue-600 px-6 py-2 text-white rounded-lg text-sm font-medium">إضافة وجبة</button>
+              <button type="submit" className="w-full bg-emerald-500 hover:bg-emerald-400 text-black px-6 py-3 rounded-xl text-sm font-bold transition-all mt-2 shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]">إضافة وجبة</button>
             </form>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-4 border-b border-gray-100 bg-gray-50">
-              <h3 className="font-semibold text-gray-800">قائمة وجبات {selectedRestaurant.name}</h3>
+          <div className="bg-[#18181b]/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/5 overflow-hidden">
+            <div className="p-5 border-b border-white/5 bg-black/40">
+              <h3 className="font-bold text-gray-200">قائمة وجبات <span className="text-emerald-400">{selectedRestaurant.name}</span></h3>
             </div>
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-white/5">
               {meals.map(m => (
-                <li key={m.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                <li key={m.id} className="p-5 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
                   <div>
-                    <span className="font-medium text-gray-900 block">{m.name}</span>
-                    <span className="text-gray-500 text-sm">{m.price.toFixed(2)} د.أ</span>
+                    <span className="font-bold text-gray-200 block mb-1">{m.name}</span>
+                    <span className="text-gray-400 font-mono text-sm bg-white/5 px-2 py-0.5 rounded border border-white/10">{m.price.toFixed(2)} د.أ</span>
                   </div>
-                  <button onClick={() => handleDeleteMeal(m.id)} className="text-red-500 hover:text-red-700 text-sm">حذف</button>
+                  <button onClick={() => handleDeleteMeal(m.id)} className="text-gray-500 hover:text-red-400 hover:bg-red-400/10 p-2 rounded-lg transition-colors text-sm font-bold">حذف</button>
                 </li>
               ))}
-              {meals.length === 0 && <li className="p-6 text-center text-gray-500">لا يوجد وجبات لهذا المطعم.</li>}
+              {meals.length === 0 && <li className="p-8 text-center text-gray-500">لا يوجد وجبات لهذا المطعم.</li>}
             </ul>
           </div>
         </div>
@@ -438,9 +453,9 @@ export default function Admin() {
 
   return (
     <div className="space-y-6 pb-20 relative">
-      <h1 className="text-2xl font-bold text-gray-900">لوحة تحكم الإدارة</h1>
+      <h1 className="text-3xl font-black text-gray-100 mb-8">لوحة الإدارة</h1>
       
-      <div className="flex overflow-x-auto sticky top-[60px] z-20 bg-gray-50/95 backdrop-blur shadow-sm -mx-4 px-4 md:mx-0 md:px-0 rounded-b-xl border-x border-b border-gray-200">
+      <div className="flex overflow-x-auto sticky top-[72px] z-20 bg-[#0c0c0e]/95 backdrop-blur-xl border border-white/5 shadow-lg rounded-2xl mx-0 p-1 mb-8 gap-1 scrollbar-hide">
         {tabs.map(tab => {
           const isActive = tab.path === location.pathname || (tab.id === 'orders' && location.pathname === '/admin');
           return (
@@ -448,19 +463,20 @@ export default function Admin() {
               key={tab.id}
               to={tab.path}
               className={cn(
-                "flex items-center gap-2 px-4 py-3 font-medium text-sm whitespace-nowrap border-b-2 transition-colors flex-1 text-center justify-center",
-                isActive ? "border-blue-600 text-blue-600 bg-white" : "border-transparent text-gray-600 hover:text-gray-900 hover:bg-white/60"
+                "flex items-center gap-2 px-5 py-3 font-bold text-sm whitespace-nowrap rounded-xl transition-all flex-1 text-center justify-center",
+                isActive ? "bg-white/10 text-white shadow-sm" : "bg-transparent text-gray-400 hover:text-gray-200 hover:bg-white/5"
               )}
             >
-              <tab.icon size={18} />
+              <tab.icon size={18} className={cn("", isActive ? "text-emerald-400" : "")} />
               {tab.name}
             </Link>
           );
         })}
       </div>
 
-      <div className="mt-6">
+      <div className="mt-8">
         <AnimatePresence mode="wait">
+          {/* @ts-ignore */}
           <Routes location={location} key={location.pathname}>
             <Route path="/" element={<AdminOrders />} />
             <Route path="/users" element={<AdminUsers />} />

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Login from './components/Login.tsx';
 import Dashboard from './components/Dashboard.tsx';
@@ -65,7 +65,7 @@ export default function App() {
   return (
     <AuthProvider>
       <Router>
-        <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
+        <div className="min-h-screen bg-[#0c0c0e] text-gray-100 font-sans selection:bg-emerald-500/30">
           <Navbar />
           <main className="max-w-5xl mx-auto p-4 md:p-6">
             <Routes>
