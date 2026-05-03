@@ -17,7 +17,6 @@ export default function Dashboard() {
   const [allOrders, setAllOrders] = useState<any[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [items, setItems] = useState<any[]>([]);
-  const [restaurants, setRestaurants] = useState<any[]>([]);
   const [meals, setMeals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'list' | 'summary'>('summary');
@@ -120,10 +119,10 @@ export default function Dashboard() {
 
       let orderData = null;
       if (orderIdToFetch) {
-         const orderRes = await fetch(`/api/orders/${orderIdToFetch}`, { headers });
-         orderData = await orderRes.json();
+        const orderRes = await fetch(`/api/orders/${orderIdToFetch}`, { headers });
+        orderData = await orderRes.json();
       } else if (allOrdersData.length > 0) {
-         orderData = allOrdersData[0]; // the latest order
+        orderData = allOrdersData[0];
       }
 
       setOrder(orderData);
@@ -131,13 +130,13 @@ export default function Dashboard() {
         setSelectedOrderId(orderData.id);
         const itemsRes = await fetch(`/api/orders/${orderData.id}/items`, { headers });
         setItems(await itemsRes.json());
+        // auto-set restaurant from the order
+        if (orderData.restaurant_id) setRestaurantId(orderData.restaurant_id);
       } else {
         setSelectedOrderId(null);
         setItems([]);
+        setRestaurantId('');
       }
-
-      const restsRes = await fetch('/api/restaurants', { headers });
-      setRestaurants(await restsRes.json());
     } catch (err) {
       console.error(err);
     } finally {
@@ -149,10 +148,6 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
-  const handleOrderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    fetchData(e.target.value);
-  };
-
   useEffect(() => {
     if (restaurantId) {
       const token = localStorage.getItem('token');
@@ -160,7 +155,7 @@ export default function Dashboard() {
         .then(res => res.json())
         .then(data => {
           setMeals(data);
-          setSelectedMealId(''); // Reset meal
+          setSelectedMealId('');
           setItemName('');
           setPrice('');
         });
@@ -169,6 +164,14 @@ export default function Dashboard() {
       setSelectedMealId('');
     }
   }, [restaurantId]);
+
+  const handleOrderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedMealId('');
+    setItemName('');
+    setPrice('');
+    setNotes('');
+    fetchData(e.target.value);
+  };
 
   const handleMealChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const mealId = e.target.value;
@@ -352,13 +355,15 @@ export default function Dashboard() {
         <div className="w-full md:w-auto flex-1">
           <div className="flex items-center gap-3 mb-3">
             <h2 className="text-xl font-bold text-gray-100">الطلبية:</h2>
-            <select 
+            <select
               className="bg-black/20 border border-white/10 text-gray-200 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 block p-2 outline-none cursor-pointer hover:bg-black/40 transition-colors"
               value={selectedOrderId || ''}
               onChange={handleOrderChange}
             >
               {allOrders.map(o => (
-                <option key={o.id} value={o.id} className="bg-[#18181b]">{o.order_date}</option>
+                <option key={o.id} value={o.id} className="bg-[#18181b]">
+                  {o.order_date}{o.restaurant_name ? ` — ${o.restaurant_name}` : ''}
+                </option>
               ))}
             </select>
           </div>
@@ -381,7 +386,7 @@ export default function Dashboard() {
         </div>
         <div className="text-center w-full md:w-48 bg-black/20 px-6 py-4 rounded-xl border border-white/5 hidden sm:block">
           <div className="text-sm text-gray-400 mb-1">الإجمالي الكلي</div>
-          <div className="text-3xl font-black text-emerald-400">{totalAmount.toFixed(2)} <span className="text-lg text-emerald-600">د.أ</span></div>
+          <div className="text-3xl font-black text-emerald-400">{totalAmount.toFixed(2)} <span className="text-lg text-emerald-600">₪</span></div>
         </div>
       </div>
 
@@ -400,21 +405,13 @@ export default function Dashboard() {
             {formError && <div className="text-red-400 text-sm mb-4 bg-red-500/10 border border-red-500/20 p-3 rounded-xl">{formError}</div>}
             
             <form onSubmit={handleAddItem} className="space-y-5">
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1.5">المطعم *</label>
-                <select 
-                  required
-                  value={restaurantId}
-                  onChange={e => setRestaurantId(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-black/20 border border-white/10 text-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 text-sm transition-all"
-                >
-                  <option value="" className="bg-[#18181b]">-- اختر المطعم --</option>
-                  {restaurants.map(r => (
-                    <option key={r.id} value={r.id} className="bg-[#18181b]">{r.name}</option>
-                  ))}
-                </select>
-              </div>
-              
+              {order.restaurant_name && (
+                <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2.5 rounded-xl">
+                  <span className="text-xs text-gray-400">المطعم:</span>
+                  <span className="text-sm font-bold text-emerald-400">{order.restaurant_name}</span>
+                </div>
+              )}
+
               {restaurantId && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
                   <label className="block text-sm font-medium text-gray-400 mb-1.5">الوجبة *</label>
@@ -426,7 +423,7 @@ export default function Dashboard() {
                   >
                     <option value="" className="bg-[#18181b]">-- اختر الوجبة --</option>
                     {meals.map(m => (
-                      <option key={m.id} value={m.id} className="bg-[#18181b]">{m.name} - {m.price.toFixed(2)} د.أ</option>
+                      <option key={m.id} value={m.id} className="bg-[#18181b]">{m.name} - {m.price.toFixed(2)} ₪</option>
                     ))}
                     <option value="custom" className="bg-[#18181b]">وجبة أخرى (إدخال يدوي)</option>
                   </select>

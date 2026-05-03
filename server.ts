@@ -5,6 +5,7 @@ import db, { initDb } from './src/db.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
+import { sendWhatsAppMessage } from './src/whatsappService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_office_food_order_key_123';
 
@@ -67,9 +68,9 @@ app.get('/api/auth/me', authenticate, (req: any, res) => {
 app.put('/api/users/me', authenticate, (req: any, res) => {
   const { currentPassword, newPassword, newUsername, newFullName } = req.body;
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id) as any;
-  
+
   if (!user) return res.status(404).json({ error: 'User not found' });
-  
+
   if (!bcrypt.compareSync(currentPassword, user.password)) {
     return res.status(401).json({ error: 'كلمة المرور الحالية غير صحيحة' });
   }
@@ -89,28 +90,57 @@ app.put('/api/users/me', authenticate, (req: any, res) => {
 
   db.prepare('UPDATE users SET username = ?, full_name = ?, password = ? WHERE id = ?')
     .run(finalUsername, finalFullName, finalPassword, req.user.id);
-  
+
   const token = jwt.sign({ id: user.id, username: finalUsername, is_admin: user.is_admin === 1 }, JWT_SECRET, { expiresIn: '7d' });
   res.json({ success: true, token, user: { id: user.id, username: finalUsername, full_name: finalFullName, is_admin: user.is_admin === 1 } });
 });
 
 app.get('/api/users', authenticate, (req, res) => {
-  const users = db.prepare('SELECT id, username, full_name, is_admin, created_at FROM users').all();
+  const users = db.prepare('SELECT id, username, full_name, is_admin, phone, created_at FROM users').all();
   res.json(users.map((u: any) => ({ ...u, is_admin: u.is_admin === 1 })));
 });
 
 app.post('/api/users', authenticate, requireAdmin, (req, res) => {
-  const { username, password, full_name, is_admin } = req.body;
+  const { username, password, full_name, is_admin, phone } = req.body;
   try {
     const hash = bcrypt.hashSync(password, 10);
     const id = randomUUID();
-    db.prepare('INSERT INTO users (id, username, password, full_name, is_admin) VALUES (?, ?, ?, ?, ?)').run(
-      id, username, hash, full_name, is_admin ? 1 : 0
+    db.prepare('INSERT INTO users (id, username, password, full_name, is_admin, phone) VALUES (?, ?, ?, ?, ?, ?)').run(
+      id, username, hash, full_name, is_admin ? 1 : 0, phone || null
     );
-    res.json({ id, username, full_name, is_admin });
+    res.json({ id, username, full_name, is_admin, phone: phone || null });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
+});
+
+app.put('/api/users/:id', authenticate, requireAdmin, (req: any, res) => {
+  const { full_name, username, is_admin, newPassword, phone } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id) as any;
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  if (username && username !== user.username) {
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (existing) return res.status(400).json({ error: 'اسم المستخدم مسجل مسبقاً' });
+  }
+
+  const finalUsername = username || user.username;
+  const finalFullName = full_name || user.full_name;
+  const finalIsAdmin = is_admin !== undefined ? (is_admin ? 1 : 0) : user.is_admin;
+  const finalPhone = phone !== undefined ? (phone || null) : user.phone;
+  let finalPassword = user.password;
+  if (newPassword) finalPassword = bcrypt.hashSync(newPassword, 10);
+
+  db.prepare('UPDATE users SET username = ?, full_name = ?, is_admin = ?, password = ?, phone = ? WHERE id = ?')
+    .run(finalUsername, finalFullName, finalIsAdmin, finalPassword, finalPhone, req.params.id);
+
+  res.json({ success: true, id: req.params.id, username: finalUsername, full_name: finalFullName, is_admin: finalIsAdmin === 1, phone: finalPhone });
+});
+
+app.delete('/api/users/:id', authenticate, requireAdmin, (req: any, res) => {
+  if (req.params.id === req.user.id) return res.status(400).json({ error: 'لا يمكنك حذف حسابك الخاص' });
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
 });
 
 app.get('/api/restaurants', authenticate, (req, res) => {
@@ -148,32 +178,46 @@ app.delete('/api/restaurants/meals/:meal_id', authenticate, requireAdmin, (req, 
 });
 
 app.get('/api/orders', authenticate, (req, res) => {
-  const orders = db.prepare('SELECT * FROM daily_orders ORDER BY order_date DESC').all();
+  const orders = db.prepare(`
+    SELECT o.*, r.name as restaurant_name
+    FROM daily_orders o
+    LEFT JOIN restaurants r ON o.restaurant_id = r.id
+    ORDER BY o.order_date DESC
+  `).all();
   res.json(orders);
 });
 
 app.get('/api/orders/today', authenticate, (req, res) => {
   const today = new Date().toISOString().split('T')[0];
-  let order = db.prepare('SELECT * FROM daily_orders WHERE order_date = ?').get(today);
+  const order = db.prepare(`
+    SELECT o.*, r.name as restaurant_name
+    FROM daily_orders o
+    LEFT JOIN restaurants r ON o.restaurant_id = r.id
+    WHERE o.order_date = ?
+  `).get(today);
   res.json(order || null);
 });
 
 app.get('/api/orders/:id', authenticate, (req, res) => {
-  const order = db.prepare('SELECT * FROM daily_orders WHERE id = ?').get(req.params.id);
+  const order = db.prepare(`
+    SELECT o.*, r.name as restaurant_name
+    FROM daily_orders o
+    LEFT JOIN restaurants r ON o.restaurant_id = r.id
+    WHERE o.id = ?
+  `).get(req.params.id);
   res.json(order || null);
 });
 
 app.post('/api/orders', authenticate, requireAdmin, (req: any, res) => {
-  const { date } = req.body || {};
+  const { date, restaurant_id } = req.body || {};
+  if (!restaurant_id) return res.status(400).json({ error: 'يجب اختيار مطعم للطلبية' });
   const orderDate = date || new Date().toISOString().split('T')[0];
-  const existing = db.prepare('SELECT * FROM daily_orders WHERE order_date = ?').get(orderDate);
-  if (existing) return res.status(400).json({ error: 'يوجد طلبية مسجلة بهذا التاريخ مسبقاً' });
 
   const id = randomUUID();
-  db.prepare('INSERT INTO daily_orders (id, order_date, status, created_by) VALUES (?, ?, ?, ?)').run(
-    id, orderDate, 'open', req.user.id
+  db.prepare('INSERT INTO daily_orders (id, order_date, status, created_by, restaurant_id) VALUES (?, ?, ?, ?, ?)').run(
+    id, orderDate, 'open', req.user.id, restaurant_id
   );
-  res.json({ id, order_date: orderDate, status: 'open' });
+  res.json({ id, order_date: orderDate, status: 'open', restaurant_id });
 });
 
 app.put('/api/orders/:id/status', authenticate, requireAdmin, (req: any, res) => {
@@ -202,7 +246,7 @@ app.get('/api/orders/:id/items', authenticate, (req, res) => {
 app.post('/api/orders/:id/items', authenticate, (req: any, res) => {
   const { restaurant_id, item_name, price, notes } = req.body;
   const order = db.prepare('SELECT status FROM daily_orders WHERE id = ?').get(req.params.id) as any;
-  
+
   if (!order || order.status !== 'open') {
     return res.status(400).json({ error: 'Only open orders can receive new items' });
   }
@@ -212,7 +256,7 @@ app.post('/api/orders/:id/items', authenticate, (req: any, res) => {
     INSERT INTO order_items (id, daily_order_id, user_id, restaurant_id, item_name, price, notes)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(id, req.params.id, req.user.id, restaurant_id, item_name, price, notes || null);
-  
+
   res.json({ id, daily_order_id: req.params.id, user_id: req.user.id, restaurant_id, item_name, price, notes });
 });
 
@@ -231,6 +275,44 @@ app.delete('/api/orders/items/:id', authenticate, (req: any, res) => {
 
   db.prepare('DELETE FROM order_items WHERE id = ?').run(req.params.id);
   res.json({ success: true });
+});
+
+app.post('/api/whatsapp/send', authenticate, requireAdmin, async (req, res) => {
+  const { phone, message } = req.body;
+  if (!phone || !message) return res.status(400).json({ error: 'phone and message are required' });
+  const result = await sendWhatsAppMessage(phone, message);
+  if (result.success) {
+    res.json({ success: true });
+  } else {
+    res.status(500).json({ error: result.error });
+  }
+});
+
+app.post('/api/whatsapp/send-bulk', authenticate, requireAdmin, async (req, res) => {
+  const { phones, message } = req.body;
+  if (!phones?.length || !message) return res.status(400).json({ error: 'phones and message are required' });
+
+  const results = await Promise.allSettled(
+    (phones as string[]).map((phone: string) => sendWhatsAppMessage(phone, message))
+  );
+  const sent = results.filter(r => r.status === 'fulfilled' && (r.value as any).success).length;
+  res.json({ success: true, sent, failed: results.length - sent, total: results.length });
+});
+
+app.post('/api/whatsapp/broadcast', authenticate, requireAdmin, async (req, res) => {
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: 'message is required' });
+
+  const usersWithPhone = db.prepare("SELECT id, full_name, phone FROM users WHERE phone IS NOT NULL AND phone != ''").all() as any[];
+  if (usersWithPhone.length === 0) return res.json({ success: true, sent: 0, failed: 0 });
+
+  const results = await Promise.allSettled(
+    usersWithPhone.map(u => sendWhatsAppMessage(u.phone, message))
+  );
+
+  const sent = results.filter(r => r.status === 'fulfilled' && (r.value as any).success).length;
+  const failed = results.length - sent;
+  res.json({ success: true, sent, failed, total: results.length });
 });
 
 async function startServer() {

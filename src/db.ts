@@ -29,12 +29,14 @@ export const initDb = () => {
 
     CREATE TABLE IF NOT EXISTS daily_orders (
       id TEXT PRIMARY KEY,
-      order_date DATE NOT NULL UNIQUE,
+      order_date DATE NOT NULL,
       status TEXT CHECK( status IN ('open', 'ordered', 'delivered', 'closed') ) NOT NULL DEFAULT 'open',
       created_by TEXT NOT NULL,
+      restaurant_id TEXT,
       closes_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(created_by) REFERENCES users(id)
+      FOREIGN KEY(created_by) REFERENCES users(id),
+      FOREIGN KEY(restaurant_id) REFERENCES restaurants(id)
     );
 
     CREATE TABLE IF NOT EXISTS order_items (
@@ -63,6 +65,46 @@ export const initDb = () => {
   try {
     db.exec(`ALTER TABLE daily_orders ADD COLUMN closes_at DATETIME;`);
     console.log('Added closes_at column to daily_orders.');
+  } catch (err: any) {
+    // Column might already exist
+  }
+
+  try {
+    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='daily_orders'").get() as any;
+    if (tableInfo?.sql?.includes('UNIQUE')) {
+      db.pragma('foreign_keys = OFF');
+      db.exec(`
+        CREATE TABLE daily_orders_new (
+          id TEXT PRIMARY KEY,
+          order_date DATE NOT NULL,
+          status TEXT CHECK(status IN ('open','ordered','delivered','closed')) NOT NULL DEFAULT 'open',
+          created_by TEXT NOT NULL,
+          closes_at DATETIME,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(created_by) REFERENCES users(id)
+        );
+        INSERT INTO daily_orders_new SELECT * FROM daily_orders;
+        DROP TABLE daily_orders;
+        ALTER TABLE daily_orders_new RENAME TO daily_orders;
+      `);
+      db.pragma('foreign_keys = ON');
+      console.log('Removed UNIQUE constraint from daily_orders.order_date');
+    }
+  } catch (err: any) {
+    db.pragma('foreign_keys = ON');
+    console.log('daily_orders migration skipped:', err.message);
+  }
+
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN phone TEXT;`);
+    console.log('Added phone column to users.');
+  } catch (err: any) {
+    // Column might already exist
+  }
+
+  try {
+    db.exec(`ALTER TABLE daily_orders ADD COLUMN restaurant_id TEXT REFERENCES restaurants(id);`);
+    console.log('Added restaurant_id column to daily_orders.');
   } catch (err: any) {
     // Column might already exist
   }

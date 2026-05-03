@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\hp\\\\source\\\\repos\\\\taqatNaeirOrde\\\\taqatNaeirOrder\" -Force)",
+      "Bash(Select-Object Name, Mode)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

@@ -1,14 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Users, Store, Calendar, Plus } from 'lucide-react';
+import { Users, Store, Calendar, Plus, MessageCircle, Send } from 'lucide-react';
 import { cn } from '../lib/utils.ts';
 import { motion, AnimatePresence } from 'motion/react';
 
 function AdminOrders() {
   const [allOrders, setAllOrders] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [restaurants, setRestaurants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [newOrderDate, setNewOrderDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newRestaurantId, setNewRestaurantId] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
+
+  // whatsapp recipient: 'none' | 'custom' | 'users' | 'all'
+  const [whatsTarget, setWhatsTarget] = useState<'none' | 'custom' | 'users' | 'all'>('none');
+  const [whatsPhone, setWhatsPhone] = useState('');
+  const [whatsSelectedUsers, setWhatsSelectedUsers] = useState<string[]>([]);
+  const [whatsMessage, setWhatsMessage] = useState('');
+  const [whatsStatus, setWhatsStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [whatsResult, setWhatsResult] = useState('');
 
   const [editingTimerId, setEditingTimerId] = useState<string | null>(null);
   const [timerMinutes, setTimerMinutes] = useState('30');
@@ -17,29 +28,98 @@ function AdminOrders() {
     try {
       const token = localStorage.getItem('token');
       const allRes = await fetch('/api/orders', { headers: { Authorization: `Bearer ${token}` } });
-      const allOrdersData = await allRes.json();
-      setAllOrders(allOrdersData);
+      setAllOrders(await allRes.json());
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchOrders(); }, []);
+  useEffect(() => {
+    fetchOrders();
+    const token = localStorage.getItem('token');
+    fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(setUsers);
+    fetch('/api/restaurants', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(setRestaurants);
+  }, []);
+
+  const defaultMessage = (date: string) =>
+    `🍕 تم فتح الطلبية ليوم ${date}\nيمكنكم الآن تسجيل طلباتكم من خلال التطبيق.`;
+
+  const handleShowCreate = () => {
+    setShowCreateForm(v => !v);
+    setNewRestaurantId('');
+    setWhatsTarget('none');
+    setWhatsPhone('');
+    setWhatsSelectedUsers([]);
+    setWhatsMessage(defaultMessage(newOrderDate));
+    setWhatsStatus('idle');
+    setWhatsResult('');
+  };
+
+  const toggleUserSelect = (userId: string) => {
+    setWhatsSelectedUsers(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
 
   const handleCreateOrder = async () => {
+    if (!newRestaurantId) { alert('يجب اختيار مطعم للطلبية'); return; }
     const token = localStorage.getItem('token');
     const res = await fetch('/api/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ date: newOrderDate })
+      body: JSON.stringify({ date: newOrderDate, restaurant_id: newRestaurantId })
     });
-    if (res.ok) {
-      setShowCreateForm(false);
-      fetchOrders();
-    } else {
+    if (!res.ok) {
       const errorData = await res.json();
       alert(errorData.error || 'حدث خطأ أثناء إنشاء الطلبية');
+      return;
     }
+    setShowCreateForm(false);
+    fetchOrders();
+
+    if (whatsTarget === 'none' || !whatsMessage.trim()) return;
+
+    setWhatsStatus('sending');
+    try {
+      if (whatsTarget === 'all') {
+        const waRes = await fetch('/api/whatsapp/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ message: whatsMessage.trim() })
+        });
+        const data = await waRes.json();
+        setWhatsResult(`تم الإرسال لـ ${data.sent} من أصل ${data.total} مستخدم`);
+        setWhatsStatus('sent');
+      } else if (whatsTarget === 'users') {
+        const phones = whatsSelectedUsers
+          .map(id => users.find(u => u.id === id)?.phone)
+          .filter(Boolean) as string[];
+        if (!phones.length) { setWhatsStatus('idle'); return; }
+        const waRes = await fetch('/api/whatsapp/send-bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ phones, message: whatsMessage.trim() })
+        });
+        const data = await waRes.json();
+        setWhatsResult(`تم الإرسال لـ ${data.sent} من أصل ${data.total}`);
+        setWhatsStatus('sent');
+      } else {
+        if (!whatsPhone.trim()) { setWhatsStatus('idle'); return; }
+        const waRes = await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ phone: whatsPhone.trim(), message: whatsMessage.trim() })
+        });
+        setWhatsStatus(waRes.ok ? 'sent' : 'error');
+        setWhatsResult(waRes.ok ? 'تم إرسال الرسالة بنجاح' : 'تعذر الإرسال');
+      }
+    } catch {
+      setWhatsStatus('error');
+      setWhatsResult('تعذر الاتصال بالخادم');
+    }
+    setTimeout(() => { setWhatsStatus('idle'); setWhatsResult(''); }, 5000);
   };
 
   const handleChangeStatus = async (id: string, status: string) => {
@@ -92,32 +172,116 @@ function AdminOrders() {
             إدارة الطلبيات
           </h3>
           
-          <button 
-            onClick={() => setShowCreateForm(!showCreateForm)}
+          <button
+            onClick={handleShowCreate}
             className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-4 py-2.5 rounded-xl transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] text-sm"
           >
-            <Plus size={18} /> 
+            <Plus size={18} />
             إنشاء طلبية جديدة
           </button>
         </div>
 
+        {whatsStatus !== 'idle' && whatsResult && (
+          <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-bold border ${whatsStatus === 'sent' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+            {whatsStatus === 'sent' ? '✓ ' : '✗ '}{whatsResult}
+          </div>
+        )}
+
         {showCreateForm && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-6 p-5 border border-emerald-500/20 bg-emerald-500/5 rounded-2xl overflow-hidden mt-4">
-            <h4 className="font-bold text-gray-200 mb-3 text-sm">تاريخ الطلبية الجديدة</h4>
-            <div className="flex flex-wrap gap-3 items-end">
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-6 p-5 border border-emerald-500/20 bg-emerald-500/5 rounded-2xl overflow-hidden mt-4 space-y-4">
+            {/* Date + Restaurant */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <input 
-                  type="date" 
+                <h4 className="font-bold text-gray-200 mb-2 text-sm">تاريخ الطلبية *</h4>
+                <input
+                  type="date"
                   value={newOrderDate}
-                  onChange={e => setNewOrderDate(e.target.value)}
-                  className="bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 block p-2.5 outline-none"
+                  onChange={e => { setNewOrderDate(e.target.value); setWhatsMessage(defaultMessage(e.target.value)); }}
+                  className="w-full bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 block p-2.5 outline-none"
                 />
               </div>
-              <button 
-                onClick={handleCreateOrder}
-                className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-5 py-2.5 rounded-xl transition-all text-sm"
-              >
+              <div>
+                <h4 className="font-bold text-gray-200 mb-2 text-sm">المطعم *</h4>
+                <select
+                  required
+                  value={newRestaurantId}
+                  onChange={e => setNewRestaurantId(e.target.value)}
+                  className="w-full bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 px-3 py-2.5 outline-none"
+                >
+                  <option value="" className="bg-[#18181b]">-- اختر مطعم --</option>
+                  {restaurants.map(r => (
+                    <option key={r.id} value={r.id} className="bg-[#18181b]">{r.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* WhatsApp notification */}
+            <div className="border-t border-white/5 pt-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <MessageCircle size={15} className="text-emerald-400" />
+                <h4 className="font-bold text-gray-200 text-sm">إشعار واتساب (اختياري)</h4>
+              </div>
+
+              {/* Target selector */}
+              <div className="grid grid-cols-3 gap-2">
+                {([['none', 'بدون إرسال'], ['users', 'مستخدمين محددين'], ['all', 'كل المستخدمين']] as const).map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => { setWhatsTarget(val); setWhatsPhone(''); setWhatsSelectedUsers([]); }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${whatsTarget === val ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 'bg-black/20 border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {whatsTarget === 'users' && (
+                <div className="space-y-1 max-h-48 overflow-y-auto border border-white/10 rounded-xl p-2 bg-black/20">
+                  {users.length === 0 && <p className="text-xs text-gray-500 text-center py-3">لا يوجد مستخدمين</p>}
+                  {users.map(u => (
+                    <label
+                      key={u.id}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${!u.phone ? 'opacity-40 cursor-not-allowed' : 'hover:bg-white/5'} ${whatsSelectedUsers.includes(u.id) ? 'bg-emerald-500/10' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={!u.phone}
+                        checked={whatsSelectedUsers.includes(u.id)}
+                        onChange={() => u.phone && toggleUserSelect(u.id)}
+                        className="rounded border-white/20 bg-black/20 text-emerald-500 focus:ring-emerald-500"
+                      />
+                      <span className="flex-1 text-sm text-gray-200 font-medium">{u.full_name}</span>
+                      <span className="font-mono text-xs text-gray-500 dir-ltr">{u.phone || 'بدون رقم'}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {whatsTarget === 'all' && (
+                <p className="text-xs text-gray-400 bg-black/20 border border-white/5 px-3 py-2 rounded-lg">
+                  سيتم الإرسال لجميع المستخدمين الذين لديهم رقم واتساب مسجّل.
+                </p>
+              )}
+
+              {whatsTarget !== 'none' && (
+                <textarea
+                  rows={3}
+                  placeholder="نص الرسالة..."
+                  value={whatsMessage}
+                  onChange={e => setWhatsMessage(e.target.value)}
+                  className="w-full bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 px-4 py-2.5 outline-none placeholder-gray-500 resize-none"
+                />
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button onClick={handleCreateOrder} className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-5 py-2.5 rounded-xl transition-all text-sm">
                 تأكيد الإنشاء
+              </button>
+              <button onClick={() => setShowCreateForm(false)} className="bg-white/10 hover:bg-white/15 text-white font-bold px-5 py-2.5 rounded-xl transition-all text-sm">
+                إلغاء
               </button>
             </div>
           </motion.div>
@@ -128,6 +292,7 @@ function AdminOrders() {
             <thead className="bg-black/40 border-b border-white/5">
               <tr>
                 <th className="px-5 py-4 min-w-[120px] text-gray-400">التاريخ</th>
+                <th className="px-5 py-4 min-w-[120px] text-gray-400">المطعم</th>
                 <th className="px-5 py-4 min-w-[140px] text-gray-400">المرحلة الحالية</th>
                 <th className="px-5 py-4 min-w-[200px] text-gray-400">المؤقت</th>
               </tr>
@@ -143,6 +308,7 @@ function AdminOrders() {
                 allOrders.map(o => (
                   <tr key={o.id} className="hover:bg-white/[0.02] items-center transition-colors align-middle">
                     <td className="px-5 py-5 font-bold text-gray-200">{o.order_date}</td>
+                    <td className="px-5 py-5 text-gray-400 text-sm">{o.restaurant_name || <span className="text-gray-600">—</span>}</td>
                     <td className="px-5 py-5">
                       <select 
                         value={o.status}
@@ -211,7 +377,15 @@ function AdminUsers() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editIsAdmin, setEditIsAdmin] = useState(false);
+  const [editPassword, setEditPassword] = useState('');
+  const [editError, setEditError] = useState('');
 
   const fetchUsers = async () => {
     const token = localStorage.getItem('token');
@@ -227,14 +401,94 @@ function AdminUsers() {
     await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ username, password, full_name: fullName, is_admin: isAdmin })
+      body: JSON.stringify({ username, password, full_name: fullName, is_admin: isAdmin, phone: phone || null })
     });
-    setUsername(''); setPassword(''); setFullName(''); setIsAdmin(false);
+    setUsername(''); setPassword(''); setFullName(''); setIsAdmin(false); setPhone('');
     fetchUsers();
   };
 
+  const openEdit = (u: any) => {
+    setEditingUser(u);
+    setEditFullName(u.full_name);
+    setEditUsername(u.username);
+    setEditPhone(u.phone || '');
+    setEditIsAdmin(u.is_admin);
+    setEditPassword('');
+    setEditError('');
+  };
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditError('');
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/users/${editingUser.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ full_name: editFullName, username: editUsername, is_admin: editIsAdmin, newPassword: editPassword || undefined, phone: editPhone || null })
+    });
+    if (res.ok) {
+      setEditingUser(null);
+      fetchUsers();
+    } else {
+      const data = await res.json();
+      setEditError(data.error || 'حدث خطأ');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('حذف المستخدم نهائياً؟')) return;
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/users/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error);
+      return;
+    }
+    fetchUsers();
+  };
+
+  const inputCls = "w-full bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 px-4 py-3 outline-none transition-all placeholder-gray-500";
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
+      {/* Edit Modal */}
+      <AnimatePresence>
+        {editingUser && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setEditingUser(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#18181b] border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <h4 className="text-lg font-bold text-gray-100 mb-5">تعديل المستخدم</h4>
+              <form onSubmit={handleEdit} className="space-y-3">
+                <input required placeholder="الاسم الكامل" value={editFullName} onChange={e => setEditFullName(e.target.value)} className={inputCls} />
+                <input required placeholder="اسم المستخدم" value={editUsername} onChange={e => setEditUsername(e.target.value)} className={inputCls} />
+                <input type="tel" placeholder="رقم الواتساب (مثال: 970599123456)" value={editPhone} onChange={e => setEditPhone(e.target.value)} className={inputCls + " font-mono"} dir="ltr" />
+                <input type="password" placeholder="كلمة مرور جديدة (اتركها فارغة للإبقاء)" value={editPassword} onChange={e => setEditPassword(e.target.value)} className={inputCls} />
+                <label className="flex items-center gap-3 text-sm text-gray-300 bg-black/20 px-4 py-3 border border-white/10 rounded-xl cursor-pointer">
+                  <input type="checkbox" checked={editIsAdmin} onChange={e => setEditIsAdmin(e.target.checked)} className="rounded border-white/20 bg-black/20 text-emerald-500 focus:ring-emerald-500" />
+                  صلاحيات مسؤول (Admin)
+                </label>
+                {editError && <p className="text-red-400 text-sm font-bold">{editError}</p>}
+                <div className="flex gap-3 pt-1">
+                  <button type="submit" className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black py-2.5 rounded-xl text-sm font-bold transition-all">حفظ التعديلات</button>
+                  <button type="button" onClick={() => setEditingUser(null)} className="flex-1 bg-white/10 hover:bg-white/15 text-white py-2.5 rounded-xl text-sm font-bold transition-all">إلغاء</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="bg-[#18181b]/80 backdrop-blur-xl p-6 rounded-2xl shadow-lg border border-white/5">
         <h3 className="text-xl font-bold flex items-center gap-2 text-gray-100 mb-6">
           <div className="bg-emerald-500/20 text-emerald-400 p-1.5 rounded-lg">
@@ -243,10 +497,11 @@ function AdminUsers() {
           إضافة مستخدم جديد
         </h3>
         <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input required placeholder="الاسم الكامل" value={fullName} onChange={e => setFullName(e.target.value)} className="bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 block px-4 py-3 outline-none transition-all placeholder-gray-500" />
-          <input required placeholder="اسم المستخدم" value={username} onChange={e => setUsername(e.target.value)} className="bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 block px-4 py-3 outline-none transition-all placeholder-gray-500" />
-          <input required type="password" placeholder="كلمة المرور" value={password} onChange={e => setPassword(e.target.value)} className="bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 block px-4 py-3 outline-none transition-all placeholder-gray-500" />
-          <label className="flex items-center gap-3 text-sm text-gray-300 bg-black/20 px-4 py-3 border border-white/10 rounded-xl cursor-pointer">
+          <input required placeholder="الاسم الكامل" value={fullName} onChange={e => setFullName(e.target.value)} className={inputCls} />
+          <input required placeholder="اسم المستخدم" value={username} onChange={e => setUsername(e.target.value)} className={inputCls} />
+          <input required type="password" placeholder="كلمة المرور" value={password} onChange={e => setPassword(e.target.value)} className={inputCls} />
+          <input type="tel" placeholder="رقم الواتساب (مثال: 970599123456)" value={phone} onChange={e => setPhone(e.target.value)} className={inputCls + " font-mono"} dir="ltr" />
+          <label className="flex items-center gap-3 text-sm text-gray-300 bg-black/20 px-4 py-3 border border-white/10 rounded-xl cursor-pointer md:col-span-2">
             <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} className="rounded border-white/20 bg-black/20 text-emerald-500 focus:ring-emerald-500" />
             صلاحيات مسؤول (Admin)
           </label>
@@ -262,21 +517,30 @@ function AdminUsers() {
             <tr>
               <th className="px-5 py-4 text-gray-400">الاسم الكامل</th>
               <th className="px-5 py-4 text-gray-400">اسم المستخدم</th>
+              <th className="px-5 py-4 text-gray-400">واتساب</th>
               <th className="px-5 py-4 text-gray-400">الدور</th>
+              <th className="px-5 py-4 text-gray-400"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
             {users.map(u => (
               <tr key={u.id} className="hover:bg-white/[0.02] transition-colors">
                 <td className="px-5 py-4 font-bold text-gray-200">{u.full_name}</td>
-                <td className="px-5 py-4 font-mono text-gray-400">{u.username}</td>
+                <td className="px-5 py-4 font-mono text-gray-400 text-xs">{u.username}</td>
+                <td className="px-5 py-4 font-mono text-gray-400 text-xs">{u.phone || <span className="text-gray-600">—</span>}</td>
                 <td className="px-5 py-4">
                   {u.is_admin ? <span className="bg-purple-500/10 border border-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-bold">Admin</span> : <span className="bg-white/5 border border-white/10 text-gray-400 px-3 py-1.5 rounded-lg text-xs font-bold">User</span>}
+                </td>
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-2 justify-end">
+                    <button onClick={() => openEdit(u)} className="text-xs text-blue-400 hover:text-blue-300 bg-blue-400/10 hover:bg-blue-400/20 px-3 py-1.5 rounded-lg transition-colors font-bold">تعديل</button>
+                    <button onClick={() => handleDelete(u.id)} className="text-xs text-red-400 hover:text-red-300 bg-red-400/10 hover:bg-red-400/20 px-3 py-1.5 rounded-lg transition-colors font-bold">حذف</button>
+                  </div>
                 </td>
               </tr>
             ))}
             {users.length === 0 && (
-              <tr><td colSpan={3} className="px-5 py-12 text-center text-gray-500">لا يوجد مستخدمين.</td></tr>
+              <tr><td colSpan={5} className="px-5 py-12 text-center text-gray-500">لا يوجد مستخدمين.</td></tr>
             )}
           </tbody>
         </table>
@@ -427,7 +691,7 @@ function AdminRestaurants() {
                 <li key={m.id} className="p-5 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
                   <div>
                     <span className="font-bold text-gray-200 block mb-1">{m.name}</span>
-                    <span className="text-gray-400 font-mono text-sm bg-white/5 px-2 py-0.5 rounded border border-white/10">{m.price.toFixed(2)} د.أ</span>
+                    <span className="text-gray-400 font-mono text-sm bg-white/5 px-2 py-0.5 rounded border border-white/10">{m.price.toFixed(2)} ₪</span>
                   </div>
                   <button onClick={() => handleDeleteMeal(m.id)} className="text-gray-500 hover:text-red-400 hover:bg-red-400/10 p-2 rounded-lg transition-colors text-sm font-bold">حذف</button>
                 </li>
@@ -441,6 +705,129 @@ function AdminRestaurants() {
   );
 }
 
+function AdminWhatsApp() {
+  const [users, setUsers] = useState<any[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [phone, setPhone] = useState('');
+  const [message, setMessage] = useState('');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(setUsers);
+  }, []);
+
+  const handleUserSelect = (userId: string) => {
+    setSelectedUserId(userId);
+    const user = users.find(u => u.id === userId);
+    if (user?.phone) setPhone(user.phone);
+  };
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatus('loading');
+    setErrorMsg('');
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ phone, message }),
+      });
+      if (res.ok) {
+        setStatus('success');
+        setMessage('');
+      } else {
+        const data = await res.json();
+        setErrorMsg(data.error || 'حدث خطأ أثناء الإرسال');
+        setStatus('error');
+      }
+    } catch {
+      setErrorMsg('تعذر الاتصال بالخادم');
+      setStatus('error');
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
+      <div className="bg-[#18181b]/80 backdrop-blur-xl p-6 rounded-2xl shadow-lg border border-white/5">
+        <h3 className="text-xl font-bold flex items-center gap-2 text-gray-100 mb-6">
+          <div className="bg-emerald-500/20 text-emerald-400 p-1.5 rounded-lg">
+            <MessageCircle size={20} />
+          </div>
+          إرسال رسالة واتساب
+        </h3>
+
+        <form onSubmit={handleSend} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-400 mb-2">اختر مستخدم (اختياري)</label>
+            <select
+              value={selectedUserId}
+              onChange={e => handleUserSelect(e.target.value)}
+              className="w-full bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 px-4 py-3 outline-none transition-all"
+            >
+              <option value="" className="bg-[#18181b]">-- اختر مستخدم لتعبئة رقمه --</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id} className="bg-[#18181b]">
+                  {u.full_name} {u.phone ? `(${u.phone})` : '(بدون رقم)'}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-400 mb-2">رقم الهاتف *</label>
+            <input
+              required
+              type="tel"
+              placeholder="مثال: 970599123456"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              className="w-full bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 px-4 py-3 outline-none transition-all placeholder-gray-500 font-mono"
+              dir="ltr"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-400 mb-2">نص الرسالة *</label>
+            <textarea
+              required
+              rows={4}
+              placeholder="اكتب رسالتك هنا..."
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              className="w-full bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 px-4 py-3 outline-none transition-all placeholder-gray-500 resize-none"
+            />
+          </div>
+
+          {status === 'success' && (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-4 py-3 rounded-xl text-sm font-bold">
+              تم إرسال الرسالة بنجاح ✓
+            </div>
+          )}
+          {status === 'error' && (
+            <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl text-sm font-bold">
+              {errorMsg}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={status === 'loading'}
+            className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-3 rounded-xl transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] text-sm"
+          >
+            <Send size={16} />
+            {status === 'loading' ? 'جاري الإرسال...' : 'إرسال الرسالة'}
+          </button>
+        </form>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function Admin() {
   const location = useLocation();
   const currentTab = location.pathname.split('/').pop() || 'orders';
@@ -449,6 +836,7 @@ export default function Admin() {
     { id: 'orders', name: 'الطلب اليومي', icon: Calendar, path: '/admin' },
     { id: 'users', name: 'المستخدمين', icon: Users, path: '/admin/users' },
     { id: 'restaurants', name: 'المطاعم والوجبات', icon: Store, path: '/admin/restaurants' },
+    { id: 'whatsapp', name: 'واتساب', icon: MessageCircle, path: '/admin/whatsapp' },
   ];
 
   return (
@@ -481,6 +869,7 @@ export default function Admin() {
             <Route path="/" element={<AdminOrders />} />
             <Route path="/users" element={<AdminUsers />} />
             <Route path="/restaurants" element={<AdminRestaurants />} />
+            <Route path="/whatsapp" element={<AdminWhatsApp />} />
           </Routes>
         </AnimatePresence>
       </div>
