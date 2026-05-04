@@ -1,0 +1,3 @@
+dfe3rq93ygx0fnj5eb885xyv.173.212.255.184.sslip.io {
+    reverse_proxy localhost:3000
+}
