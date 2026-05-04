@@ -14,11 +14,20 @@ initDb();
 const adminCheck = db.prepare('SELECT count(*) as count FROM users');
 const { count } = adminCheck.get() as { count: number };
 if (count === 0) {
-  const hash = bcrypt.hashSync('password', 10);
+  const hash = bcrypt.hashSync('admin123', 10);
   db.prepare('INSERT INTO users (id, username, password, full_name, is_admin) VALUES (?, ?, ?, ?, ?)').run(
     randomUUID(), 'admin', hash, 'مدير النظام', 1
   );
-  console.log('Admin user seeded. username: admin, password: password');
+  console.log('Admin user seeded. username: admin, password: admin123');
+} else {
+  const existingAdmin = db.prepare('SELECT id FROM users WHERE username = ?').get('admin') as any;
+  if (!existingAdmin) {
+    const hash = bcrypt.hashSync('admin123', 10);
+    db.prepare('INSERT INTO users (id, username, password, full_name, is_admin) VALUES (?, ?, ?, ?, ?)').run(
+      randomUUID(), 'admin', hash, 'مدير النظام', 1
+    );
+    console.log('Admin user re-created. username: admin, password: admin123');
+  }
 }
 
 const app = express();
