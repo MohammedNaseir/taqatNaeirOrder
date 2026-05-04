@@ -43,8 +43,11 @@ function AdminOrders() {
       .then(r => r.json()).then(setRestaurants);
   }, []);
 
-  const defaultMessage = (date: string) =>
-    `🍕 تم فتح الطلبية ليوم ${date}\nيمكنكم الآن تسجيل طلباتكم من خلال التطبيق.`;
+  const defaultMessage = (date: string) => {
+    const restaurantName = restaurants.find(r => r.id === newRestaurantId)?.name || '';
+    const appUrl = window.location.origin;
+    return `🍕 تم فتح طلبية جديدة!\n\n📅 التاريخ: ${date}\n🍽️ المطعم: ${restaurantName || 'سيتم التحديد'}\n⏰ حالة الطلبية: مفتوحة لاستقبال الطلبات\n\n📝 لتسجيل طلبك، ادخل على الرابط التالي:\n🌐 ${appUrl}/\n\n⚠️ يرجى تسجيل طلبك قبل إغلاق الطلبية.`;
+  };
 
   const handleShowCreate = () => {
     setShowCreateForm(v => !v);
@@ -713,6 +716,10 @@ function AdminWhatsApp() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
 
+  const [credSelectedIds, setCredSelectedIds] = useState<string[]>([]);
+  const [credStatus, setCredStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [credResult, setCredResult] = useState<{ sent: number; failed: number; total: number } | null>(null);
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } })
@@ -751,6 +758,74 @@ function AdminWhatsApp() {
     }
   };
 
+  const toggleCredUser = (id: string) => {
+    setCredSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const selectAllCredUsers = () => {
+    const usersWithPhone = users.filter(u => u.phone);
+    setCredSelectedIds(usersWithPhone.map(u => u.id));
+  };
+
+  const handleSendCredentials = async () => {
+    if (credSelectedIds.length === 0) return;
+    if (!confirm(`سيتم إرسال بيانات الدخول (اسم المستخدم + كلمة مرور مؤقتة) لـ ${credSelectedIds.length} مستخدم عبر الواتساب. سيتم تغيير كلمة المرور لكل مستخدم. متابعة؟`)) return;
+    setCredStatus('loading');
+    setCredResult(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/whatsapp/send-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userIds: credSelectedIds }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCredResult({ sent: data.sent, failed: data.failed, total: data.total });
+        setCredStatus('success');
+        setCredSelectedIds([]);
+      } else {
+        setErrorMsg(data.error || 'حدث خطأ');
+        setCredStatus('error');
+      }
+    } catch {
+      setErrorMsg('تعذر الاتصال بالخادم');
+      setCredStatus('error');
+    }
+    setTimeout(() => { setCredStatus('idle'); setCredResult(null); }, 8000);
+  };
+
+  const sendCredToUser = async (userId: string) => {
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
+    if (!confirm(`سيتم إرسال بيانات الدخول (اسم المستخدم + كلمة مرور مؤقتة) للمستخدم ${user.full_name} عبر الواتساب. سيتم تغيير كلمة المرور. متابعة؟`)) return;
+
+    setCredStatus('loading');
+    setCredResult(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/whatsapp/send-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userIds: [userId] }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCredResult({ sent: data.sent, failed: data.failed, total: data.total });
+        setCredStatus('success');
+      } else {
+        setErrorMsg(data.error || 'حدث خطأ');
+        setCredStatus('error');
+      }
+    } catch {
+      setErrorMsg('تعذر الاتصال بالخادم');
+      setCredStatus('error');
+    }
+    setTimeout(() => { setCredStatus('idle'); setCredResult(null); }, 8000);
+  };
+
+  const inputCls = "w-full bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 px-4 py-3 outline-none transition-all placeholder-gray-500";
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
       <div className="bg-[#18181b]/80 backdrop-blur-xl p-6 rounded-2xl shadow-lg border border-white/5">
@@ -786,7 +861,7 @@ function AdminWhatsApp() {
               placeholder="مثال: 970599123456"
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              className="w-full bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 px-4 py-3 outline-none transition-all placeholder-gray-500 font-mono"
+              className={inputCls + " font-mono"}
               dir="ltr"
             />
           </div>
@@ -799,7 +874,7 @@ function AdminWhatsApp() {
               placeholder="اكتب رسالتك هنا..."
               value={message}
               onChange={e => setMessage(e.target.value)}
-              className="w-full bg-black/20 border border-white/10 text-gray-100 text-sm rounded-xl focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 px-4 py-3 outline-none transition-all placeholder-gray-500 resize-none"
+              className={inputCls + " resize-none"}
             />
           </div>
 
@@ -823,6 +898,70 @@ function AdminWhatsApp() {
             {status === 'loading' ? 'جاري الإرسال...' : 'إرسال الرسالة'}
           </button>
         </form>
+      </div>
+
+      <div className="bg-[#18181b]/80 backdrop-blur-xl p-6 rounded-2xl shadow-lg border border-amber-500/20">
+        <h3 className="text-xl font-bold flex items-center gap-2 text-gray-100 mb-2">
+          <div className="bg-amber-500/20 text-amber-400 p-1.5 rounded-lg">
+            🔑
+          </div>
+          إرسال بيانات الدخول عبر واتساب
+        </h3>
+        <p className="text-xs text-gray-400 mb-5 leading-relaxed">
+          سيتم إنشاء كلمة مرور مؤقتة جديدة لكل مستخدم وإرسال اسم المستخدم وكلمة المرور عبر الواتساب.
+          <span className="text-amber-400 font-bold"> سيتم تغيير كلمة المرور الحالية!</span>
+        </p>
+
+        <div className="mb-4 flex gap-2">
+          <button onClick={selectAllCredUsers} className="text-xs bg-white/10 hover:bg-white/15 text-gray-300 px-3 py-1.5 rounded-lg transition-colors font-bold">تحديد الكل</button>
+          <button onClick={() => setCredSelectedIds([])} className="text-xs bg-white/10 hover:bg-white/15 text-gray-300 px-3 py-1.5 rounded-lg transition-colors font-bold">إلغاء التحديد</button>
+        </div>
+
+        <div className="space-y-1 max-h-64 overflow-y-auto border border-white/10 rounded-xl p-2 bg-black/20 mb-4">
+          {users.length === 0 && <p className="text-xs text-gray-500 text-center py-3">لا يوجد مستخدمين</p>}
+          {users.map(u => (
+            <div key={u.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${!u.phone ? 'opacity-40' : 'hover:bg-white/5'}`}>
+              <input
+                type="checkbox"
+                disabled={!u.phone}
+                checked={credSelectedIds.includes(u.id)}
+                onChange={() => toggleCredUser(u.id)}
+                className="rounded border-white/20 bg-black/20 text-emerald-500 focus:ring-emerald-500"
+              />
+              <span className="flex-1 text-sm text-gray-200 font-medium">{u.full_name}</span>
+              <span className="text-xs text-gray-500 font-mono dir-ltr">{u.phone || 'بدون رقم'}</span>
+              {u.phone && (
+                <button
+                  onClick={() => sendCredToUser(u.id)}
+                  disabled={credStatus === 'loading'}
+                  className="text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-2.5 py-1 rounded-lg transition-colors font-bold whitespace-nowrap disabled:opacity-50"
+                >
+                  إرسال له فقط
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {credResult && (
+          <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-bold border ${credResult.failed === 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-amber-500/10 border-amber-500/20 text-amber-400'}`}>
+            تم الإرسال لـ {credResult.sent} من أصل {credResult.total}{credResult.failed > 0 ? ` (فشل ${credResult.failed})` : ''}
+          </div>
+        )}
+        {credStatus === 'error' && !credResult && (
+          <div className="mb-4 px-4 py-3 rounded-xl text-sm font-bold bg-red-500/10 border border-red-500/20 text-red-400">
+            {errorMsg}
+          </div>
+        )}
+
+        <button
+          onClick={handleSendCredentials}
+          disabled={credSelectedIds.length === 0 || credStatus === 'loading'}
+          className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-3 rounded-xl transition-all shadow-[0_0_15px_rgba(245,158,11,0.2)] hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] text-sm"
+        >
+          <Send size={16} />
+          {credStatus === 'loading' ? 'جاري الإرسال...' : `إرسال بيانات الدخول (${credSelectedIds.length} مستخدم)`}
+        </button>
       </div>
     </motion.div>
   );

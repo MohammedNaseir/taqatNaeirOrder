@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import { sendWhatsAppMessage } from './src/whatsappService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_office_food_order_key_123';
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
 initDb();
 
@@ -321,6 +322,42 @@ app.post('/api/whatsapp/broadcast', authenticate, requireAdmin, async (req, res)
   const sent = results.filter(r => r.status === 'fulfilled' && (r.value as any).success).length;
   const failed = results.length - sent;
   res.json({ success: true, sent, failed, total: results.length });
+});
+
+app.post('/api/whatsapp/send-credentials', authenticate, requireAdmin, async (req, res) => {
+  const { userIds } = req.body;
+  if (!userIds?.length) return res.status(400).json({ error: 'userIds are required' });
+
+  const users = db.prepare('SELECT id, username, full_name, phone FROM users WHERE id IN (' + userIds.map(() => '?').join(',') + ')').all(...userIds) as any[];
+  const results: { sent: number; failed: number; total: number; details: { userId: string; phone: string | null; success: boolean; error?: string }[] } = { sent: 0, failed: 0, total: users.length, details: [] };
+
+  for (const user of users) {
+    if (!user.phone) {
+      results.details.push({ userId: user.id, phone: null, success: false, error: 'No phone number' });
+      results.failed++;
+      continue;
+    }
+    const tempPassword = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6).toUpperCase();
+    const hash = bcrypt.hashSync(tempPassword, 10);
+    db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hash, user.id);
+
+    const message = `🔐 بيانات الدخول لنظام الطلبات\n\n👤 اسم المستخدم: ${user.username}\n🔑 كلمة المرور: ${tempPassword}\n\n🌐 رابط النظام: ${APP_URL}/\n\n⚠️ يرجى تغيير كلمة المرور بعد تسجيل الدخول.`;
+
+    const result = await sendWhatsAppMessage(user.phone, message);
+    if (result.success) {
+      results.sent++;
+      results.details.push({ userId: user.id, phone: user.phone, success: true });
+    } else {
+      results.failed++;
+      results.details.push({ userId: user.id, phone: user.phone, success: false, error: result.error });
+    }
+  }
+
+  res.json(results);
+});
+
+app.get('/api/config', authenticate, requireAdmin, (req, res) => {
+  res.json({ appUrl: APP_URL });
 });
 
 async function startServer() {
