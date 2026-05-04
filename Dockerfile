@@ -6,7 +6,11 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
+
+RUN npx vite build
+RUN npx esbuild server.ts --bundle --platform=node --format=cjs --outfile=dist/server.cjs --external:better-sqlite3
+
+RUN npm prune --production
 
 EXPOSE 3000
 
