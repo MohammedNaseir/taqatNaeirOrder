@@ -1,5 +1,4 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import db, { initDb } from './src/db.js';
 import bcrypt from 'bcryptjs';
@@ -319,6 +318,7 @@ async function startServer() {
   const PORT = 3000;
 
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
