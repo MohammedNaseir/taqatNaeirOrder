@@ -7,7 +7,7 @@ import { randomUUID } from 'crypto';
 import { sendWhatsAppMessage } from './src/whatsappService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_office_food_order_key_123';
-const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+const APP_URL = process.env.APP_URL || 'http://dfe3rq93ygx0fnj5eb885xyv.173.212.255.184.sslip.io';
 
 initDb();
 
